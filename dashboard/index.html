@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Energy Model Data Explorer</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+    <script
+        src="https://cdn.plot.ly/plotly-2.35.2.min.js">
+    </script>
+
+</head>
+
+
+<body>
+
+<div class="page">
+
+    <header>
+
+        <h1>Energy Model Data Explorer</h1>
+
+        <p>
+            Explore EnergyPlus simulation results
+            across Indian climate zones.
+        </p>
+
+    </header>
+
+
+    <main>
+
+        <section class="controls">
+
+            <div class="control">
+
+                <label for="climate">
+                    Climate Zone
+                </label>
+
+                <select id="climate">
+
+                    <option value="Cold">
+                        Cold
+                    </option>
+
+                    <option value="Composite">
+                        Composite
+                    </option>
+
+                    <option value="Temperate">
+                        Temperate
+                    </option>
+
+                    <option value="Hot & Dry">
+                        Hot &amp; Dry
+                    </option>
+
+                    <option value="Warm & Humid">
+                        Warm &amp; Humid
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div class="control metric-control">
+
+                <label for="metricSearch">
+                    EnergyPlus Variable
+                </label>
+
+                <input
+                    id="metricSearch"
+                    type="text"
+                    placeholder="Search variable name..."
+                    autocomplete="off"
+                >
+
+                <div
+                    id="metricResults"
+                    class="metric-results"
+                ></div>
+
+            </div>
+
+        </section>
+
+
+        <section
+            id="selectedMetric"
+            class="selected-metric hidden"
+        >
+
+            <div>
+
+                <h2 id="metricTitle">
+                </h2>
+
+                <p id="metricUnit">
+                </p>
+
+            </div>
+
+
+            <div class="summary">
+
+                <div>
+
+                    <strong id="simulationCount">
+                        0
+                    </strong>
+
+                    <span>
+                        simulations
+                    </span>
+
+                </div>
+
+
+                <div>
+
+                    <strong id="valueCount">
+                        0
+                    </strong>
+
+                    <span>
+                        values
+                    </span>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <section
+            id="chart"
+            class="chart"
+        ></section>
+
+
+        <section
+            id="message"
+            class="message"
+        >
+            Select a climate zone and search for
+            an EnergyPlus variable.
+        </section>
+
+    </main>
+
+
+    <footer>
+
+        Energy Model Data Explorer
+
+    </footer>
+
+</div>
+
+
+<script src="app.js"></script>
+
+</body>
+
+</html>
