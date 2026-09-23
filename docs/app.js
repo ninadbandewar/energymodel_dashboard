@@ -374,18 +374,41 @@ function quantile(sortedValues, q) {
     return sortedValues[base];
 }
 
-function computeIqrBounds(numericValues) {
+// Computes the box-plot statistics ourselves (rather than letting
+// Plotly derive its own from raw y-values) so the drawn whiskers and
+// the outlier flags below are guaranteed to agree with each other.
+// - fenceLow/fenceHigh: the standard Tukey 1.5×IQR cutoff used to
+//   decide what counts as an outlier.
+// - whiskerLow/whiskerHigh: the most extreme *actual* data point
+//   still within that fence — this is what the whisker is drawn to,
+//   matching conventional box-plot behavior (whiskers stop at real
+//   data, not at the bare arithmetic fence value).
+function computeBoxStats(numericValues) {
 
     const sorted =
         [...numericValues].sort((a, b) => a - b);
 
     const q1 = quantile(sorted, 0.25);
+    const median = quantile(sorted, 0.5);
     const q3 = quantile(sorted, 0.75);
     const iqr = q3 - q1;
 
+    const fenceLow = q1 - 1.5 * iqr;
+    const fenceHigh = q3 + 1.5 * iqr;
+
+    const inBounds =
+        sorted.filter(v => v >= fenceLow && v <= fenceHigh);
+
+    const whiskerLow =
+        inBounds.length ? inBounds[0] : q1;
+
+    const whiskerHigh =
+        inBounds.length ? inBounds[inBounds.length - 1] : q3;
+
     return {
-        lower: q1 - 1.5 * iqr,
-        upper: q3 + 1.5 * iqr
+        q1, median, q3,
+        fenceLow, fenceHigh,
+        whiskerLow, whiskerHigh
     };
 }
 
@@ -413,11 +436,11 @@ function drawChart(data) {
     const numericValues =
         validValues.map(item => Number(item.value));
 
-    const { lower, upper } =
-        computeIqrBounds(numericValues);
+    const stats =
+        computeBoxStats(numericValues);
 
     const isOutlier = value =>
-        value < lower || value > upper;
+        value < stats.fenceLow || value > stats.fenceHigh;
 
     const normalValues =
         validValues.filter(
@@ -438,19 +461,23 @@ function drawChart(data) {
 
         type: "box",
 
-        y: numericValues,
+        // Precomputed statistics, not raw y-values — this forces
+        // Plotly to draw exactly the box/whiskers we calculated
+        // above, so they match the outlier flags on the points.
+        q1: [stats.q1],
+        median: [stats.median],
+        q3: [stats.q3],
+        lowerfence: [stats.whiskerLow],
+        upperfence: [stats.whiskerHigh],
 
         name: "Distribution",
 
         boxpoints: false,
 
-        showlegend: false,
+        showlegend: false
 
-        hovertemplate:
-            "<b>Distribution</b><br>" +
-            "Value: %{y:,.2f}" +
-            ` ${data.unit || ""}` +
-            "<extra></extra>"
+        // No custom hovertemplate: Plotly's default hover for a
+        // precomputed box already shows Q1/median/Q3 cleanly.
     };
 
 
@@ -574,11 +601,15 @@ function drawChart(data) {
         }
     );
 
+    const fenceText =
+        `(outside ${stats.fenceLow.toLocaleString(undefined, {maximumFractionDigits: 2})}` +
+        `–${stats.fenceHigh.toLocaleString(undefined, {maximumFractionDigits: 2})} ${data.unit || ""})`;
+
     status.textContent = outlierValues.length
         ? `${data.simulation_count.toLocaleString()} simulations plotted — ` +
-          `${outlierValues.length} flagged as outliers (beyond 1.5×IQR).`
+          `${outlierValues.length} flagged as outliers ${fenceText}.`
         : `${data.simulation_count.toLocaleString()} simulations plotted — ` +
-          "no statistical outliers detected.";
+          `no statistical outliers detected ${fenceText}.`;
 
 
     // --------------------------------------------------------
