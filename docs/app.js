@@ -283,12 +283,11 @@ async function selectMetric(metric) {
 
         showMetricInfo(data);
 
-        drawChart(data);
-
         chartContainer.hidden = false;
 
-        status.textContent =
-            `${data.simulation_count.toLocaleString()} simulations plotted.`;
+        // drawChart sets its own status message, including the
+        // outlier count once it's finished computing bounds.
+        drawChart(data);
 
     } catch (error) {
 
@@ -358,6 +357,38 @@ function showMetricInfo(data) {
 // DRAW BOX PLOT
 // ============================================================
 
+// Linear-interpolation quantile, matching numpy/Plotly's default
+// "linear" quartile method, so our outlier flags line up with where
+// Plotly actually draws the box whiskers.
+function quantile(sortedValues, q) {
+
+    const pos = (sortedValues.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+
+    if (sortedValues[base + 1] !== undefined) {
+        return sortedValues[base] +
+            rest * (sortedValues[base + 1] - sortedValues[base]);
+    }
+
+    return sortedValues[base];
+}
+
+function computeIqrBounds(numericValues) {
+
+    const sorted =
+        [...numericValues].sort((a, b) => a - b);
+
+    const q1 = quantile(sorted, 0.25);
+    const q3 = quantile(sorted, 0.75);
+    const iqr = q3 - q1;
+
+    return {
+        lower: q1 - 1.5 * iqr,
+        upper: q3 + 1.5 * iqr
+    };
+}
+
 function drawChart(data) {
 
     const values =
@@ -379,6 +410,25 @@ function drawChart(data) {
         return;
     }
 
+    const numericValues =
+        validValues.map(item => Number(item.value));
+
+    const { lower, upper } =
+        computeIqrBounds(numericValues);
+
+    const isOutlier = value =>
+        value < lower || value > upper;
+
+    const normalValues =
+        validValues.filter(
+            item => !isOutlier(Number(item.value))
+        );
+
+    const outlierValues =
+        validValues.filter(
+            item => isOutlier(Number(item.value))
+        );
+
 
     // --------------------------------------------------------
     // BOX PLOT
@@ -388,13 +438,13 @@ function drawChart(data) {
 
         type: "box",
 
-        y: validValues.map(
-            item => Number(item.value)
-        ),
+        y: numericValues,
 
         name: "Distribution",
 
         boxpoints: false,
+
+        showlegend: false,
 
         hovertemplate:
             "<b>Distribution</b><br>" +
@@ -405,45 +455,70 @@ function drawChart(data) {
 
 
     // --------------------------------------------------------
-    // INDIVIDUAL LOCATIONS
+    // INDIVIDUAL LOCATIONS (within 1.5×IQR of the quartiles)
     // --------------------------------------------------------
 
-    const pointTrace = {
+    function toPointTrace(valueSet, name, color, symbol, size) {
 
-        type: "scatter",
+        return {
 
-        mode: "markers",
+            type: "scatter",
 
-        x: validValues.map(
-            () => "All simulations"
-        ),
+            mode: "markers",
 
-        y: validValues.map(
-            item => Number(item.value)
-        ),
-
-        customdata:
-            validValues.map(
-                item => [
-                    item.location,
-                    item.state || "",
-                    item.latitude_category || ""
-                ]
+            x: valueSet.map(
+                () => "All simulations"
             ),
 
-        marker: {
-            size: 7,
-            opacity: 0.7
-        },
+            y: valueSet.map(
+                item => Number(item.value)
+            ),
 
-        hovertemplate:
-            "<b>%{customdata[0]}</b><br>" +
-            "Value: %{y:,.2f}" +
-            ` ${data.unit || ""}` +
-            "<extra></extra>",
+            customdata:
+                valueSet.map(
+                    item => [
+                        item.location,
+                        item.state || "",
+                        item.latitude_category || ""
+                    ]
+                ),
 
-        name: "Locations"
-    };
+            marker: {
+                size,
+                opacity: 0.75,
+                color,
+                symbol
+            },
+
+            hovertemplate:
+                "<b>%{customdata[0]}</b><br>" +
+                "Value: %{y:,.2f}" +
+                ` ${data.unit || ""}` +
+                `${name === "Outliers" ? " (outlier)" : ""}` +
+                "<extra></extra>",
+
+            name
+        };
+    }
+
+    const pointTrace = toPointTrace(
+        normalValues,
+        "Locations",
+        "#3b7dd8",
+        "circle",
+        7
+    );
+
+    // Points beyond 1.5x the interquartile range — same rule Plotly's
+    // whiskers use, drawn separately so they're visually flagged
+    // rather than blending in with everything else.
+    const outlierTrace = toPointTrace(
+        outlierValues,
+        "Outliers",
+        "#d43d3d",
+        "diamond",
+        9
+    );
 
 
     // --------------------------------------------------------
@@ -466,12 +541,17 @@ function drawChart(data) {
             zeroline: false
         },
 
-        showlegend: false,
+        showlegend: outlierValues.length > 0,
+
+        legend: {
+            orientation: "h",
+            y: 1.08
+        },
 
         margin: {
             l: 80,
             r: 30,
-            t: 30,
+            t: outlierValues.length > 0 ? 50 : 30,
             b: 60
         },
 
@@ -484,7 +564,8 @@ function drawChart(data) {
         "chart",
         [
             boxTrace,
-            pointTrace
+            pointTrace,
+            outlierTrace
         ],
         layout,
         {
@@ -492,6 +573,12 @@ function drawChart(data) {
             displaylogo: false
         }
     );
+
+    status.textContent = outlierValues.length
+        ? `${data.simulation_count.toLocaleString()} simulations plotted — ` +
+          `${outlierValues.length} flagged as outliers (beyond 1.5×IQR).`
+        : `${data.simulation_count.toLocaleString()} simulations plotted — ` +
+          "no statistical outliers detected.";
 
 
     // --------------------------------------------------------
