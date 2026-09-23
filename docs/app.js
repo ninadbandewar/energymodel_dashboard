@@ -9,6 +9,17 @@ const chartContainer = document.getElementById("chartContainer");
 let catalog = [];
 let climateMetrics = [];
 
+// Normalize climate-zone strings for comparison so that whitespace /
+// casing differences between the dropdown labels and whatever the
+// parser wrote (taken straight from folder names) don't break matching.
+function normalizeClimate(value) {
+    return (value || "")
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+}
+
 
 // ============================================================
 // LOAD METRIC CATALOG
@@ -38,8 +49,17 @@ async function loadCatalog() {
 
         console.error(error);
 
-        status.textContent =
-            "Could not load metric catalog.";
+        const isFileProtocol =
+            window.location.protocol === "file:";
+
+        status.textContent = isFileProtocol
+            ? "Could not load metric catalog. You're opening this file " +
+              "directly (file://) — browsers block fetch() for local files. " +
+              "Serve this folder with a local server instead, e.g. run " +
+              "'python -m http.server' in this folder and open " +
+              "http://localhost:8000/."
+            : `Could not load metric catalog (${error.message}). ` +
+              "Check that data/metric_catalog.json exists next to index.html.";
 
         status.classList.add("error");
     }
@@ -75,9 +95,11 @@ climateSelect.addEventListener("change", () => {
         return;
     }
 
+    const normalizedClimate = normalizeClimate(climate);
+
     climateMetrics = catalog
         .filter(metric =>
-            metric.climate_zone === climate
+            normalizeClimate(metric.climate_zone) === normalizedClimate
         );
 
     metricSearch.disabled = false;
@@ -87,8 +109,22 @@ climateSelect.addEventListener("change", () => {
 
     metricSearch.focus();
 
-    status.textContent =
-        `${climateMetrics.length.toLocaleString()} metrics available.`;
+    if (!climateMetrics.length && catalog.length) {
+        const available = [...new Set(
+            catalog.map(m => m.climate_zone)
+        )].join(", ");
+
+        status.textContent =
+            `No metrics found for "${climate}". Climate zones present ` +
+            `in the catalog: ${available || "(none)"}.`;
+
+        status.classList.add("error");
+    } else {
+        status.classList.remove("error");
+
+        status.textContent =
+            `${climateMetrics.length.toLocaleString()} metrics available.`;
+    }
 });
 
 
@@ -185,7 +221,10 @@ metricSearch.addEventListener("input", () => {
 
         item.addEventListener(
             "click",
-            () => selectMetric(metric)
+            event => {
+                event.stopPropagation();
+                selectMetric(metric);
+            }
         );
 
         suggestions.appendChild(item);
