@@ -1,59 +1,13 @@
-const DATA_ROOT = "data/";
+const climateSelect = document.getElementById("climateSelect");
+const metricSearch = document.getElementById("metricSearch");
+const suggestions = document.getElementById("suggestions");
 
-const climateFolders = {
+const status = document.getElementById("status");
+const metricInfo = document.getElementById("metricInfo");
+const chartContainer = document.getElementById("chartContainer");
 
-    "Cold":
-        "Cold",
-
-    "Composite":
-        "Composite",
-
-    "Temperate":
-        "Temperate",
-
-    "Hot & Dry":
-        "Hot_Dry",
-
-    "Warm & Humid":
-        "Warm_Humid"
-};
-
-
-let metricCatalog = [];
-
-let selectedMetric = null;
-
-
-// ============================================================
-// ELEMENTS
-// ============================================================
-
-const climateSelect =
-    document.getElementById("climate");
-
-const searchInput =
-    document.getElementById("metricSearch");
-
-const metricResults =
-    document.getElementById("metricResults");
-
-const selectedMetricPanel =
-    document.getElementById("selectedMetric");
-
-const metricTitle =
-    document.getElementById("metricTitle");
-
-const metricUnit =
-    document.getElementById("metricUnit");
-
-const simulationCount =
-    document.getElementById("simulationCount");
-
-const valueCount =
-    document.getElementById("valueCount");
-
-const message =
-    document.getElementById("message");
+let catalog = [];
+let climateMetrics = [];
 
 
 // ============================================================
@@ -64,160 +18,184 @@ async function loadCatalog() {
 
     try {
 
-        const response =
-            await fetch(
-                DATA_ROOT +
-                "metric_catalog.json"
-            );
+        const response = await fetch(
+            "data/metric_catalog.json",
+            { cache: "no-store" }
+        );
 
         if (!response.ok) {
-
-            throw new Error(
-                "Could not load metric catalog."
-            );
+            throw new Error(`HTTP ${response.status}`);
         }
 
-        metricCatalog =
-            await response.json();
+        const data = await response.json();
+
+        catalog = data.metrics || [];
+
+        status.textContent =
+            `${catalog.length.toLocaleString()} metrics available.`;
 
     } catch (error) {
 
-        message.textContent =
-            "Could not load dashboard data.";
-
         console.error(error);
+
+        status.textContent =
+            "Could not load metric catalog.";
+
+        status.classList.add("error");
     }
 }
 
+loadCatalog();
+
 
 // ============================================================
-// SEARCH METRICS
+// CLIMATE ZONE
 // ============================================================
 
-function searchMetrics() {
+climateSelect.addEventListener("change", () => {
 
-    const query =
-        searchInput.value
-            .trim()
-            .toLowerCase();
+    const climate = climateSelect.value;
 
+    metricSearch.value = "";
+    suggestions.innerHTML = "";
 
-    if (!query) {
+    chartContainer.hidden = true;
+    metricInfo.hidden = true;
 
-        metricResults.innerHTML = "";
+    if (!climate) {
+
+        metricSearch.disabled = true;
+
+        metricSearch.placeholder =
+            "Select a climate zone first...";
+
+        status.textContent =
+            "Select a climate zone to begin.";
 
         return;
     }
 
+    climateMetrics = catalog
+        .filter(metric =>
+            metric.climate_zone === climate
+        );
 
-    const climate =
-        climateSelect.value;
+    metricSearch.disabled = false;
 
+    metricSearch.placeholder =
+        "Search variables...";
 
-    const matches =
-        metricCatalog
-            .filter(metric => {
+    metricSearch.focus();
 
-                const climateMatch =
-                    metric.source_table ===
-                    "ReportData"
-                    ? true
-                    : true;
-
-                const text =
-                    (
-                        metric.variable_name
-                        + " "
-                        + metric.key_value
-                        + " "
-                        + metric.display_unit
-                    ).toLowerCase();
+    status.textContent =
+        `${climateMetrics.length.toLocaleString()} metrics available.`;
+});
 
 
-                return (
-                    text.includes(query)
-                    &&
-                    (
-                        !metric.climate_zones
-                        ||
-                        metric.climate_zones.includes(
-                            climate
-                        )
-                    )
-                );
+// ============================================================
+// SEARCH
+// ============================================================
 
-            })
-            .slice(0, 50);
+metricSearch.addEventListener("input", () => {
 
+    const query =
+        metricSearch.value
+            .trim()
+            .toLowerCase();
 
-    metricResults.innerHTML = "";
+    suggestions.innerHTML = "";
 
+    if (!query) {
+        suggestions.style.display = "none";
+        return;
+    }
+
+    const matches = climateMetrics
+        .filter(metric => {
+
+            const text = [
+                metric.variable_name,
+                metric.display_name,
+                metric.key_value,
+                metric.unit,
+                metric.aggregation
+            ]
+            .join(" ")
+            .toLowerCase();
+
+            return text.includes(query);
+        })
+        .slice(0, 30);
+
+    if (!matches.length) {
+
+        suggestions.style.display = "none";
+
+        status.textContent =
+            "No matching variables found.";
+
+        return;
+    }
 
     matches.forEach(metric => {
 
         const item =
+            document.createElement("button");
+
+        item.className = "suggestion";
+        item.type = "button";
+
+        const title =
             document.createElement("div");
 
-        item.className =
-            "metric-result";
+        title.className =
+            "suggestion-title";
 
-
-        const name =
-            document.createElement("div");
-
-        name.className =
-            "metric-name";
-
-        name.textContent =
+        title.textContent =
             metric.variable_name;
 
-
-        const unit =
+        const details =
             document.createElement("div");
 
-        unit.className =
-            "metric-unit";
+        details.className =
+            "suggestion-details";
 
-        let unitText =
-            metric.display_unit || "No unit";
+        const parts = [];
 
+        if (metric.key_value)
+            parts.push(metric.key_value);
+
+        if (metric.unit)
+            parts.push(metric.unit);
 
         if (
-            metric.key_value
+            metric.aggregation &&
+            metric.aggregation !== "direct"
         ) {
-
-            unitText +=
-                " · " +
-                metric.key_value;
+            parts.push(
+                metric.aggregation
+            );
         }
 
+        details.textContent =
+            parts.join(" • ");
 
-        unit.textContent =
-            unitText;
-
-
-        item.appendChild(name);
-
-        item.appendChild(unit);
-
+        item.appendChild(title);
+        item.appendChild(details);
 
         item.addEventListener(
             "click",
-            () => {
-
-                selectMetric(metric);
-
-            }
+            () => selectMetric(metric)
         );
 
-
-        metricResults.appendChild(
-            item
-        );
-
+        suggestions.appendChild(item);
     });
 
-}
+    suggestions.style.display = "block";
+
+    status.textContent =
+        `${matches.length} matching variable(s).`;
+});
 
 
 // ============================================================
@@ -226,173 +204,170 @@ function searchMetrics() {
 
 async function selectMetric(metric) {
 
-    selectedMetric =
-        metric;
-
-    searchInput.value =
+    metricSearch.value =
         metric.variable_name;
 
-    metricResults.innerHTML =
-        "";
+    suggestions.innerHTML = "";
+    suggestions.style.display = "none";
 
+    status.textContent =
+        "Loading simulation results...";
 
-    metricTitle.textContent =
-        metric.variable_name;
-
-
-    metricUnit.textContent =
-        metric.display_unit
-        ? "Unit: " + metric.display_unit
-        : "Unit: not specified";
-
-
-    selectedMetricPanel
-        .classList
-        .remove("hidden");
-
-
-    message.textContent =
-        "Loading...";
-
-
-    const climate =
-        climateSelect.value;
-
-
-    const folder =
-        climateFolders[
-            climate
-        ];
-
-
-    const url =
-        DATA_ROOT
-        + folder
-        + "/"
-        + metric.id
-        + ".json";
-
+    chartContainer.hidden = true;
+    metricInfo.hidden = true;
 
     try {
 
-        const response =
-            await fetch(url);
+        /*
+         * The v3 parser stores the exact public JSON
+         * filename in metric.file.
+         *
+         * Example:
+         *
+         * data/warm_humid/m_a83f91c2d1ab.json
+         */
 
+        const response =
+            await fetch(
+                `data/${metric.file}`,
+                { cache: "no-store" }
+            );
 
         if (!response.ok) {
-
             throw new Error(
-                "Metric data unavailable."
+                `HTTP ${response.status}`
             );
         }
-
 
         const data =
             await response.json();
 
+        showMetricInfo(data);
 
-        simulationCount.textContent =
-            data.simulation_count;
+        drawChart(data);
 
+        chartContainer.hidden = false;
 
-        valueCount.textContent =
-            data.value_count;
-
-
-        drawBoxPlot(
-            data,
-            climate
-        );
-
+        status.textContent =
+            `${data.simulation_count.toLocaleString()} simulations plotted.`;
 
     } catch (error) {
 
-        message.textContent =
-            "No data available for this metric in "
-            + climate
-            + ".";
-
         console.error(error);
-    }
 
+        status.textContent =
+            "Could not load this metric.";
+
+        status.classList.add("error");
+    }
 }
 
 
 // ============================================================
-// BOX PLOT
+// METRIC INFORMATION
 // ============================================================
 
-function drawBoxPlot(
-    data,
-    climate
-) {
+function showMetricInfo(data) {
+
+    metricInfo.innerHTML = "";
+
+    const title =
+        document.createElement("h2");
+
+    title.textContent =
+        data.variable_name;
+
+    const details =
+        document.createElement("p");
+
+    const information = [];
+
+    if (data.key_value)
+        information.push(
+            `Key: ${data.key_value}`
+        );
+
+    if (data.unit)
+        information.push(
+            `Unit: ${data.unit}`
+        );
+
+    if (
+        data.aggregation &&
+        data.aggregation !== "direct"
+    ) {
+        information.push(
+            `Aggregation: ${data.aggregation}`
+        );
+    }
+
+    information.push(
+        `Simulations: ${data.simulation_count}`
+    );
+
+    details.textContent =
+        information.join("  |  ");
+
+    metricInfo.appendChild(title);
+    metricInfo.appendChild(details);
+
+    metricInfo.hidden = false;
+}
+
+
+// ============================================================
+// DRAW BOX PLOT
+// ============================================================
+
+function drawChart(data) {
 
     const values =
-        data.values
-            .map(item =>
-                Number(item.value)
-            )
-            .filter(value =>
-                Number.isFinite(value)
-            );
+        data.values || [];
 
+    const validValues =
+        values.filter(
+            item =>
+                Number.isFinite(
+                    Number(item.value)
+                )
+        );
 
-    if (!values.length) {
+    if (!validValues.length) {
 
-        message.textContent =
-            "No numerical values are available.";
+        status.textContent =
+            "This metric contains no numeric values.";
 
         return;
     }
 
 
-    message.textContent =
-        "";
-
-
     // --------------------------------------------------------
-    // Individual points
+    // BOX PLOT
     // --------------------------------------------------------
-
-    const pointText =
-        data.values.map(
-            item =>
-                item.location
-                + "<br>"
-                + Number(
-                    item.value
-                ).toLocaleString(
-                    undefined,
-                    {
-                        maximumFractionDigits: 3
-                    }
-                )
-                + " "
-                + (
-                    data.metric.display_unit
-                    || ""
-                )
-        );
-
 
     const boxTrace = {
 
         type: "box",
 
-        y: values,
+        y: validValues.map(
+            item => Number(item.value)
+        ),
 
-        name: climate,
+        name: "Distribution",
 
         boxpoints: false,
 
         hovertemplate:
-            "<b>%{y}</b><extra></extra>",
-
-        marker: {
-            size: 5
-        }
+            "<b>Distribution</b><br>" +
+            "Value: %{y:,.2f}" +
+            ` ${data.unit || ""}` +
+            "<extra></extra>"
     };
 
+
+    // --------------------------------------------------------
+    // INDIVIDUAL LOCATIONS
+    // --------------------------------------------------------
 
     const pointTrace = {
 
@@ -400,61 +375,69 @@ function drawBoxPlot(
 
         mode: "markers",
 
-        x:
-            Array(
-                data.values.length
-            ).fill(climate),
+        x: validValues.map(
+            () => "All simulations"
+        ),
 
-        y: values,
+        y: validValues.map(
+            item => Number(item.value)
+        ),
 
-        text: pointText,
-
-        hovertemplate:
-            "%{text}<extra></extra>",
+        customdata:
+            validValues.map(
+                item => [
+                    item.location,
+                    item.state || "",
+                    item.latitude_category || ""
+                ]
+            ),
 
         marker: {
-            size: 5
-        }
+            size: 7,
+            opacity: 0.7
+        },
+
+        hovertemplate:
+            "<b>%{customdata[0]}</b><br>" +
+            "Value: %{y:,.2f}" +
+            ` ${data.unit || ""}` +
+            "<extra></extra>",
+
+        name: "Locations"
     };
 
+
+    // --------------------------------------------------------
+    // LAYOUT
+    // --------------------------------------------------------
 
     const layout = {
 
         title: {
-            text:
-                data.metric.variable_name
-        },
-
-        yaxis: {
-
-            title:
-                data.metric.display_unit
-                || "Value",
-
-            zeroline: false
+            text: ""
         },
 
         xaxis: {
-
-            title:
-                "Climate Zone"
+            showticklabels: false,
+            title: ""
         },
 
-        hovermode:
-            "closest",
+        yaxis: {
+            title: data.unit || "Value",
+            zeroline: false
+        },
+
+        showlegend: false,
 
         margin: {
             l: 80,
             r: 30,
-            t: 70,
-            b: 70
+            t: 30,
+            b: 60
         },
 
-        paper_bgcolor:
-            "white",
-
-        plot_bgcolor:
-            "white"
+        paper_bgcolor: "white",
+        plot_bgcolor: "white"
     };
 
 
@@ -467,46 +450,69 @@ function drawBoxPlot(
         layout,
         {
             responsive: true,
-
-            displayModeBar:
-                false
+            displaylogo: false
         }
     );
 
+
+    // --------------------------------------------------------
+    // CLICK LOCATION
+    // --------------------------------------------------------
+
+    document
+        .getElementById("chart")
+        .on(
+            "plotly_click",
+            event => {
+
+                const point =
+                    event.points[0];
+
+                if (
+                    !point ||
+                    !point.customdata
+                ) {
+                    return;
+                }
+
+                const location =
+                    point.customdata[0];
+
+                const value =
+                    Number(point.y);
+
+                const message =
+                    `${location}: ` +
+                    `${value.toLocaleString(
+                        undefined,
+                        {
+                            maximumFractionDigits: 2
+                        }
+                    )} ` +
+                    `${data.unit || ""}`;
+
+                status.textContent =
+                    message;
+            }
+        );
 }
 
 
 // ============================================================
-// CLIMATE CHANGE
+// CLOSE SUGGESTIONS WHEN CLICKING OUTSIDE
 // ============================================================
 
-climateSelect.addEventListener(
-    "change",
-    () => {
+document.addEventListener(
+    "click",
+    event => {
 
-        if (selectedMetric) {
-
-            selectMetric(
-                selectedMetric
-            );
+        if (
+            !event.target.closest(
+                ".metric-control"
+            )
+        ) {
+            suggestions.style.display =
+                "none";
         }
-
     }
 );
-
-
-// ============================================================
-// SEARCH
-// ============================================================
-
-searchInput.addEventListener(
-    "input",
-    searchMetrics
-);
-
-
-// ============================================================
-// INITIALIZE
-// ============================================================
-
-loadCatalog();
